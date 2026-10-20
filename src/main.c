@@ -1,32 +1,76 @@
-// Typische Register-Definitionen für den STM32WLE5, um ohne HAL-Treiber direkt Ports zu schalten
-#define PERIPH_BASE           ((unsigned int)0x40000000)
-#define AHB2PERIPH_BASE       (PERIPH_BASE + 0x08000000)
-#define GPIOB_BASE            (AHB2PERIPH_BASE + 0x00000400)
-#define RCC_BASE              (AHB2PERIPH_BASE + 0x00001000)
+// Register-Definitionen für STM32WLE5
+#define RCC_AHB2ENR           (*(volatile unsigned int *)0x5800104C) 
+#define RCC_APB2ENR           (*(volatile unsigned int *)0x58001060) 
+#define GPIOB_MODER           (*(volatile unsigned int *)0x48000400) 
+#define GPIOB_OTYPER          (*(volatile unsigned int *)0x48000404) 
+#define GPIOB_OSPEEDR         (*(volatile unsigned int *)0x48000408) 
+#define GPIOB_PUPDR           (*(volatile unsigned int *)0x4800040C) 
+#define GPIOB_ODR             (*(volatile unsigned int *)0x48000414) 
+#define GPIOB_AFRL            (*(volatile unsigned int *)0x48000420) 
+#define USART1_CR1            (*(volatile unsigned int *)0x40013800)
+#define USART1_BRR            (*(volatile unsigned int *)0x4001380C)
+#define USART1_ISR            (*(volatile unsigned int *)0x4001381C)
+#define USART1_TDR            (*(volatile unsigned int *)0x40013828)
 
-#define RCC_AHB2ENR           (*(volatile unsigned int *)(RCC_BASE + 0x4C))
-#define GPIOB_MODER           (*(volatile unsigned int *)(GPIOB_BASE + 0x00))
-#define GPIOB_ODR             (*(volatile unsigned int *)(GPIOB_BASE + 0x14))
+extern unsigned int _estack; // Kommt aus dem Linker-Skript
+void Reset_Handler(void);
+int main(void);
+
+// 1. Die minimale Vektortabelle für den Cortex-M4 Bootloader
+__attribute__((section(".vector_table")))
+const unsigned int * VectorTable[] = {
+    (unsigned int *) &_estack,        // 1. Initialer Stack Pointer
+    (unsigned int *) Reset_Handler    // 2. Reset Vektor (Hier startet die CPU)
+};
+
+// 2. Der Reset Handler (wird direkt nach dem Einschalten aufgerufen)
+void Reset_Handler(void) {
+    main(); // Springe direkt in die main-Schleife
+    while(1);
+}
 
 void delay(volatile int count) {
-    while (count--) {
-        __asm__("nop");
-    }
+    while (count--) { __asm__("nop"); }
+}
+
+void uart_putc(char c) {
+    while (!(USART1_ISR & (1 << 7))); // Warten auf TXE
+    USART1_TDR = c;
+}
+
+void uart_puts(char *s) {
+    while (*s) uart_putc(*s++);
 }
 
 int main(void) {
-    // 1. Takt für Port B einschalten
-    RCC_AHB2ENR |= (1 << 1); 
+    // Takt einschalten
+    RCC_AHB2ENR |= (1 << 1);  // GPIOB
+    RCC_APB2ENR |= (1 << 14); // USART1
 
-    // 2. Pin PB5 als Ausgang (Output) konfigurieren
-    GPIOB_MODER &= ~(3 << (5 * 2)); // Bits löschen
-    GPIOB_MODER |= (1 << (5 * 2));  // Auf "01" (General Purpose Output) setzen
+    // LED an PB5 konfigurieren
+    GPIOB_MODER &= ~(3 << (5 * 2)); 
+    GPIOB_MODER |= (1 << (5 * 2));  
+    GPIOB_OTYPER &= ~(1 << 5);      
+
+    // UART-TX an PB6 konfigurieren
+    GPIOB_MODER &= ~(3 << (6 * 2)); 
+    GPIOB_MODER |= (2 << (6 * 2));  
+    GPIOB_OSPEEDR |= (3 << (6 * 2)); 
+    GPIOB_PUPDR &= ~(3 << (6 * 2));
+    GPIOB_PUPDR |= (1 << (6 * 2));  
+    
+    GPIOB_AFRL &= ~(0xF << (6 * 4));
+    GPIOB_AFRL |= (7 << (6 * 4));  
+
+    // Baudrate: 9600 Baud bei 4 MHz Standard-MSI-Takt
+    USART1_BRR = 416; 
+    USART1_CR1 |= (1 << 0) | (1 << 3); // UE=1, TE=1
+
+    delay(50000);
 
     while (1) {
-        // 3. Pin PB5 umschalten (Toggle)
-        GPIOB_ODR ^= (1 << 5); 
-        
-        // Kleine Pause (ca. 500ms je nach internem CPU-Takt)
-        delay(100000); 
+        GPIOB_ODR ^= (1 << 5); // LED Blinken
+        uart_puts("Wio E5 Bare-Metal lebt!\r\n");
+        delay(300000); 
     }
 }

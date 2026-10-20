@@ -16,7 +16,9 @@ set(MCU_FLAGS "-mcpu=cortex-m4 -mthumb -mfloat-abi=soft -fdata-sections -ffuncti
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${MCU_FLAGS} -Wall -O0 -g3")
 
 # HIER ERGÄNZT: --specs=nosys.specs hinzugefügt, um die fehlenden Dummys wie _exit bereitzustellen
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${MCU_FLAGS} --specs=nano.specs --specs=nosys.specs -Wl,--gc-sections")
+#set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${MCU_FLAGS} --specs=nano.specs --specs=nosys.specs -Wl,--gc-sections")
+# HIER KORRIGIERT: Pfad zum Linker-Skript hinzugefügt (-T stm32wle5xx.ld)
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${MCU_FLAGS} --specs=nano.specs --specs=nosys.specs -T ${CMAKE_SOURCE_DIR}/stm32wle5xx.ld -Wl,--gc-sections")
 
 # 3. Globale Definitionen für die ST-Treiber
 add_compile_definitions(STM32WLE5xx USE_HAL_DRIVER)
@@ -25,4 +27,4 @@ add_compile_definitions(STM32WLE5xx USE_HAL_DRIVER)
 file(GLOB_RECURSE SOURCES "src/*.c")
 
 # 5. Das ausführbare Programm (Executable) erstellen
-add_executable(${CMAKE_PROJECT_NAME} ${SOURCES})
+add_executable(${CMAKE_PROJECT_NAME}.bin ${SOURCES})
