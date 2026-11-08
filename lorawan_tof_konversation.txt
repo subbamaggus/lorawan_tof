@@ -1,0 +1,139 @@
+VL53L0X LoRaWAN Tasmota / Custom STM32WLE5 Board-Entwicklung
+================================================================
+
+Zusammenfassung der Konversation und des technischen Designs für das hocheffiziente, quadratische ToF-Distanzsensor-Board auf Basis des STM32WLE5 (Wio-E5).
+
+1. HARDWARE-ARCHITEKTUR & STROMSPARKONZEPT (V1)
+-----------------------------------------------
+Das Sensor-Board ist auf minimalen Stromverbrauch im Tiefschlaf (unter 5 µA) ausgelegt. Komponenten werden im Deep Sleep physisch über MOSFETs von der Spannungsversorgung getrennt.
+
+* Controller: Wio-E5 (STM32WLE5JC) Modul von Seeed Studio (MCU + LoRa auf einem Chip).
+* Sensor: VL53L0X (Time-of-Flight LiDAR).
+* Spannungsregler: MCP1700T-3302E/TT (LDO mit ~1.6 µA Eigenverbrauch).
+* Akku: Flacher, quadratischer/rechteckiger Li-Po-Akku (z.B. Typ 503450 mit ~900 mAh, integrierte Schutzschaltung/BMS zwingend erforderlich).
+* Schnittstelle: 1x6 Stiftleiste (Rastermaß 1.27mm oder 2.00mm) statt klobiger USB-Buchsen oder Pogo-Pins für Prototypen.
+* Schutzdiode: BAT54 Schottky-Diode am VCC-Pin der Steckleiste, um Rückströme vom Akku in den Programmer zu verhindern.
+
+ASCII-SCHALTPLAN (POWER- & UPDATE-SEKTOR):
+-------------------------------------------
+  18650 / Li-Po Akku (+)
+        │
+        ├───► [ Gesteuerter Spannungsteiler für ADC ]
+        │
+        ▼ (In)
+   ┌──────────────┐
+   │  LDO-Regler  │
+   │ MCP1700-3302 │
+   └──────┬───────┘
+          │ (Out)
+          │
+          ├───► Haupt-3.3V Schiene (Dauerstrom für Wio-E5 VCC)
+          │
+          │      Schottky-Diode (BAT54)
+          │         ┌───►│───┐
+          │         │        │
+          └─────────┴────────┼───────► [ Pin 1: VCC ] (1x6 Steckleiste)
+                             │
+                             ├───────► [ Pin 2: GND ] (1x6 Steckleiste)
+                             │
+                             ├───────► [ Pin 3: SWDIO ] ──► an STM32 (PA13)
+                             │
+                             ├───────► [ Pin 4: SWCLK ] ──► an STM32 (PA14)
+                             │
+                             ├───────► [ Pin 5: TX ]    ──► an STM32 (PA2)
+                             │
+                             └───────► [ Pin 6: RX ]    ──► an STM32 (PA3)
+
+  Haupt-3.3V Schiene
+        │
+        ▼ (Source)
+   ┌──────────┐
+   │ P-Kanal  │◀─── [ Gate ] ──┬──[ 100 kΩ Pull-Up ]──► Haupt-3.3V Schiene
+   │  MOSFET  │                │
+   │ (BSS84)  │                └───────────────────────◄ an STM32 (PA15)
+   └────┬─────┘
+        │ (Drain)
+        │
+        └─► GESCHALTETE 3.3V_SENSOR Schiene
+              │
+              ├──► VCC des VL53L0X Sensors
+              ├──► [ 4.7 kΩ Pull-Up ] ──► I2C SDA (STM32 PA11)
+              └──► [ 4.7 kΩ Pull-Up ] ──► I2C SCL (STM32 PA12)
+
+GESTEUERTER BATTERIE-SPANNUNGSTEILER (ADC):
+-------------------------------------------
+ 18650 / Li-Po Akku (+)
+        │
+      [ 100 kΩ ] (R1)
+        │
+        ├───► zum STM32 ADC-Pin (PA3 / alternativ PA1) [ + 100 nF Kondensator gegen GND ]
+        │
+      [ 100 kΩ ] (R2)
+        │
+        ▼ (Drain)
+   ┌──────────┐
+   │ N-Kanal  │
+   │  MOSFET  │◀─── [ Gate ] ─────────────────────────◄ an STM32 (PA4 / alternativ PB5)
+   │ (BSS138) │
+   └────┬─────┘
+        │ (Source)
+        ▼
+       GND
+
+2. STÜCKLISTE (BOM) – FÜR BREADBOARD-PROTOTYP (BEDRAHTET / TO-92)
+----------------------------------------------------------------
+* 1x Seeed Studio Wio-E5 mini (Entwicklungsboard, bricht alle Pins auf 2.54mm Raster auf)
+* 1x VL53L0X Breakout-Board (inkl. Stiftleiste)
+* 2x MCP1700-3302E/TO (LDO im Transistor-Gehäuse)
+* 2x 2N7000 (N-Kanal MOSFET für schaltbare Akku-Messung im TO-92 Gehäuse)
+* 2x TP2104 (P-Kanal MOSFET für Sensor-Abschaltung im TO-92 Gehäuse)
+* 1x Flacher Li-Po Akku (z.B. ~800-1000 mAh, zwingend MIT integrierter Schutzschaltung)
+* 1x JST-PH 2.00mm Buchsenkabel (zum Anschluss des Akkus an das Breadboard)
+* Zubehör: Widerstände (100kΩ, 4.7kΩ), Keramikkondensatoren (10µF, 100nF), Breadboard + Jumperkabel.
+* Externe Programmierwerkzeuge: 
+  - 1x ST-Link V2 USB-Dongle (zwingend erforderlich für In-Circuit-Debugging/Flashen über SWD)
+  - 1x USB-zu-TTL-UART-Adapter (z.B. CH340 / FTDI für serielle Text-Ausgaben auf dem PC)
+
+3. SOWTWARE-UMGEBUNG & TOOLCHAIN IN VS CODE (LINUX)
+---------------------------------------------------
+Die Toolchain unter Linux wurde erfolgreich aufgesetzt und konfiguriert. 
+
+Benötigte VS Code Extensions:
+* STM32 VS Code Extension (von STMicroelectronics)
+* C/C++ (von Microsoft)
+* CMake Tools (von Microsoft)
+
+System-Pakete (über das Linux-Terminal installiert):
+* Compiler & Bibliotheken: `sudo apt install gcc-arm-none-eabi libnewlib-arm-none-eabi g++-arm-none-eabi`
+* Build-System: `sudo apt install ninja-build`
+* Flash-Werkzeug: `sudo apt install stlink-tools`
+
+FINALE & LAUFFÄHIGE CONFIGURATION (CMakeLists.txt):
+---------------------------------------------------
+cmake_minimum_required(VERSION 3.20)
+
+set(CMAKE_SYSTEM_NAME Generic)
+set(CMAKE_SYSTEM_PROCESSOR arm)
+set(CMAKE_TRY_COMPILE_TARGET_TYPE "STATIC_LIBRARY")
+
+set(CMAKE_C_COMPILER arm-none-eabi-gcc)
+set(CMAKE_ASM_COMPILER arm-none-eabi-gcc)
+
+project(Wio_E5_Sensor C ASM)
+
+set(MCU_FLAGS "-mcpu=cortex-m4 -mthumb -mfloat-abi=soft -fdata-sections -ffunction-sections")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${MCU_FLAGS} -Wall -O0 -g3")
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${MCU_FLAGS} --specs=nano.specs --specs=nosys.specs -Wl,--gc-sections")
+
+add_compile_definitions(STM32WLE5xx USE_HAL_DRIVER)
+
+file(GLOB_RECURSE SOURCES "src/*.c")
+add_executable(${CMAKE_PROJECT_NAME} ${SOURCES})
+
+NÄCHSTE SCHRITTE NACH HARDWARE-LIEFERUNG:
+-----------------------------------------
+1. Breadboard nach dem Verdrahtungsplan aufbauen.
+2. ST-Link V2 anschließen (SWDIO an PA13, SWCLK an PA14, GND an GND). Hinweis: Wenn das Board per USB-C versorgt wird, die 3.3V-Leitung vom ST-Link abklemmen!
+3. udev-Regeln für USB-Zugriff unter Linux laden: `sudo udevadm control --reload-rules && sudo udevadm trigger`
+4. Kompilieren in VS Code über `Strg + Shift + B`.
+5. Flashen im Terminal via: `st-flash write build/Wio_E5_Sensor.bin 0x08000000`

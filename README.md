@@ -25,3 +25,9 @@ own firmware
 low cost
 
 small formfactor
+
+# installation
+
+STM32MXCube: setup sample project
+
+ 
