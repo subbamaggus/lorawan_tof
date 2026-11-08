@@ -30,4 +30,10 @@ small formfactor
 
 STM32MXCube: setup sample project
 
+# definitions
+
+PB5 internal LED used as Debug
+
+PB6/PB7 used for serial output (usb-c)
+
  
