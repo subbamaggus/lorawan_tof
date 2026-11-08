@@ -36,7 +36,7 @@ int main(void)
     /* Output every blink on the USB-C serial */
     HAL_UART_Transmit(&huart1, (uint8_t *)"Blink!\r\n", 8, HAL_MAX_DELAY);
 
-    HAL_Delay(2000);
+    HAL_Delay(200);
 
   }
 
